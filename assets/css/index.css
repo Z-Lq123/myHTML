@@ -1,0 +1,237 @@
+/* ============================================================
+   assets/css/index.css — 首页专属样式
+   依赖 style.css 的 tokens / reset / 组件，本文件不重复定义
+   结构前提：.app 直接子元素为 header / main / footer（grid 三行）
+   ============================================================ */
+
+/* ---------- 顶部 ---------- */
+.home-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.home-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -.5px;
+  line-height: 1.2;
+  color: var(--c-text-strong);
+}
+
+.home-subtitle {
+  margin-top: 6px;
+  font-size: 13.5px;
+  color: var(--c-text-dim);
+}
+
+/* ---------- 主体容器（grid 第2行，内部纵向排列） ---------- */
+.home-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-height: 0;
+}
+
+/* ---------- 工具栏 ---------- */
+.home-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.home-search { flex: 1 1 240px; min-width: 0; }
+
+.home-count {
+  font-size: 12.5px;
+  color: var(--c-text-mute);
+  white-space: nowrap;
+  padding: 7px 12px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border-soft);
+  border-radius: 999px;
+}
+
+/* ---------- 分类筛选 ---------- */
+.home-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.home-filter {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--c-border-soft);
+  background: var(--c-surface);
+  color: var(--c-text-dim);
+  transition: background .14s, color .14s, border-color .14s;
+}
+
+.home-filter:hover {
+  border-color: var(--c-border);
+  color: var(--c-text);
+}
+
+.home-filter[aria-pressed="true"] {
+  background: var(--c-accent-soft);
+  border-color: var(--c-accent-line);
+  color: var(--c-accent-text);
+  font-weight: 700;
+}
+
+/* ---------- 项目网格 ---------- */
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--sp-3);
+  align-content: start;
+}
+
+/* ---------- 单张卡片 ---------- */
+.home-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  color: inherit;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.home-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--c-border);
+  box-shadow: 0 8px 24px -10px rgba(0,0,0,.6),
+              0 0 0 1px rgba(77,163,255,.12);
+  text-decoration: none;
+}
+
+/* 缩略图区 */
+.home-card__thumb {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--c-text-faint);
+  user-select: none;
+  overflow: hidden;
+  background: var(--c-surface-2);
+}
+
+.home-card__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-card__thumb:has(img) {
+  background: var(--c-surface-3);
+  color: transparent;
+  font-size: 0;
+}
+
+/* 文字区 */
+.home-card__name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: var(--sp-3) var(--sp-3) 0;
+  color: var(--c-text-strong);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.home-card__desc {
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 6px var(--sp-3) 0;
+  color: var(--c-text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 30px;
+  flex: 1;
+}
+
+.home-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: var(--sp-3);
+  min-height: 20px;
+}
+
+.home-tag {
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border-soft);
+  color: var(--c-text-mute);
+  white-space: nowrap;
+}
+
+/* ---------- 空状态 ---------- */
+.home-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--sp-8) var(--sp-4);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--c-text-mute);
+}
+
+/* ---------- 页脚 ---------- */
+.home-footer {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-border-soft);
+  font-size: 12.5px;
+  color: var(--c-text-faint);
+  text-align: center;
+}
+
+.home-footer code {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--c-surface-2);
+  color: var(--c-text-dim);
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 640px) {
+  .home-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+  .home-title { font-size: 22px; }
+  .home-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: var(--sp-2);
+  }
+  .home-card__thumb { font-size: 30px; }
+  .home-card__name { font-size: 14px; }
+  .home-card__desc { min-height: 26px; }
+  .home-footer { margin-top: var(--sp-4); }
+}
