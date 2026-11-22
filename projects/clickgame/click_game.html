@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>点击练习器</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- SECTION: 上 · 模式与参数 -->
+  <header class="zone-top">
+    <div class="modes" id="modes" role="tablist" aria-label="练习模式">
+      <button class="mode on" type="button" role="tab" aria-selected="true" data-mode="free">自由<small>不限时</small></button>
+      <button class="mode" type="button" role="tab" aria-selected="false" data-mode="timed">限时<small>倒计时</small></button>
+      <button class="mode" type="button" role="tab" aria-selected="false" data-mode="rhythm">节奏<small>BPM 判定</small></button>
+    </div>
+    <div class="opts">
+      <div class="optrow" id="optFree">
+        <span class="hint">点中间区域自动开始；停手 0.5 秒自动结束，结算会扣掉那 0.5 秒</span>
+      </div>
+      <div class="optrow" id="optTimed" hidden>
+        <div class="modes" id="durations" role="group" aria-label="倒计时时长" style="gap:6px">
+          <button class="chip" type="button" data-sec="10">10 秒</button>
+          <button class="chip on" type="button" data-sec="30">30 秒</button>
+          <button class="chip" type="button" data-sec="60">1 分</button>
+          <button class="chip" type="button" data-sec="120">2 分</button>
+          <button class="chip" type="button" data-sec="300">5 分</button>
+        </div>
+        <span class="hint">第一次点击开始倒计时</span>
+      </div>
+      <div class="optrow" id="optRhythm" hidden>
+        <div class="bpmbox">
+          <input type="number" id="bpm" min="30" max="300" step="1" value="120" aria-label="每分钟节拍数 BPM" inputmode="numeric">
+          <span>BPM</span>
+        </div>
+        <div id="bpmChips" style="display:flex;gap:6px;flex-wrap:wrap" role="group" aria-label="BPM 预设">
+          <button class="chip" type="button" data-bpm="60">60</button>
+          <button class="chip" type="button" data-bpm="90">90</button>
+          <button class="chip on" type="button" data-bpm="120">120</button>
+          <button class="chip" type="button" data-bpm="160">160</button>
+          <button class="chip" type="button" data-bpm="200">200</button>
+        </div>
+        <div class="bpmbox">
+          <input type="number" id="offset" min="-300" max="300" step="5" value="0" aria-label="判定延时补偿毫秒" inputmode="numeric">
+          <span>ms 延时</span>
+        </div>
+        <button class="tbtn" type="button" id="calibBtn" title="用本次平均偏差自动补偿">按偏差校准</button>
+        <span class="spacer"></span>
+        <button class="tbtn on" type="button" id="soundBtn" aria-pressed="true">声音 开</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- SECTION: 中 · 点击区域 -->
+  <section class="zone-mid">
+    <div class="pad" id="padTap">
+      <span class="flag" id="tapFlag">自由模式</span>
+      <span class="big mono" id="tapBig">0</span>
+      <span class="sub" id="tapSub">点我开始</span>
+      <div class="live" id="tapLive"></div>
+      <p class="tip" id="tapTip">桌面端可用空格键代替点击</p>
+    </div>
+    <div class="pad hidden" id="padRhythm">
+      <canvas id="rhythmCv" aria-label="节奏下落判定区"></canvas>
+      <span class="flag">节奏模式</span>
+      <div class="verdict" id="verdict"></div>
+      <p class="tip" id="rhythmTip">点这块区域跟随判定线点击</p>
+      <div class="cnt mono" id="countdown" hidden>3</div>
+    </div>
+  </section>
+
+  <!-- SECTION: 下 · 数据与图表 -->
+  <section class="zone-bot">
+    <div class="stats" id="stats"></div>
+    <div class="botbar">
+      <p class="msg" id="msg">准备就绪</p>
+      <div class="botbar-row">
+        <button class="btn pri" type="button" id="rCta" data-primary-action hidden>开始节奏练习</button>
+      </div>
+      <div class="botbar-row">
+        <button class="btn" type="button" id="chartBtn" disabled>查看图表</button>
+        <button class="btn" type="button" id="resetBtn">重置</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- SECTION: 图表浮层 -->
+<div class="mask" id="mask" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="练习图表">
+    <h2 id="chartTitle">图表</h2>
+    <p class="sum" id="chartSum"></p>
+    <canvas id="chartCv" width="720" height="380"></canvas>
+    <p class="alert" id="chartAlert" hidden></p>
+    <div class="acts">
+      <button class="btn" type="button" id="chartSave">保存为图片</button>
+      <button class="btn hi" type="button" id="chartClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+"use strict";
+
+/* ======================================================================
+   SECTION: dom  引用集中管理
+   ====================================================================== */
+function $(id) { return document.getElementById(id); }
+var D = {
+  modes: $("modes"), padTap: $("padTap"), padRhythm: $("padRhythm"),
+  tapFlag: $("tapFlag"), tapBig: $("tapBig"), tapSub: $("tapSub"), tapLive: $("tapLive"), tapTip: $("tapTip"),
+  rhythmCv: $("rhythmCv"), verdict: $("verdict"), rCta: $("rCta"), countdown: $("countdown"),
+  stats: $("stats"), msg: $("msg"), chartBtn: $("chartBtn"), resetBtn: $("resetBtn"),
+  optFree: $("optFree"), optTimed: $("optTimed"), optRhythm: $("optRhythm"),
+  durations: $("durations"), bpm: $("bpm"), bpmChips: $("bpmChips"), soundBtn: $("soundBtn"),
+  mask: $("mask"), chartTitle: $("chartTitle"), chartSum: $("chartSum"),
+  chartCv: $("chartCv"), chartSave: $("chartSave"), chartClose: $("chartClose"), chartAlert: $("chartAlert"),
+  offset: $("offset"), calibBtn: $("calibBtn")
+};
+
+/* ======================================================================
+   SECTION: consts  可调参数集中在此
+   ====================================================================== */
+var IDLE_MS = 500;          // 自由模式：停手多久判定结束
+var PERFECT_MS = 55;        // 节奏判定基准窗口（会随 BPM 收紧）
+var GOOD_MS = 120;
+var MISS_MS = 190;
+var LEAD_MS = 1100;         // 蓝条从顶部落到黄线所需时间
+var LINE_AT = 0.74;         // 黄线在画布高度上的位置
+var BEATS_PER_SESSION = 32; // 一次节奏练习的节拍数
+var MAX_RECORD = 4000;      // 单次会话最多记录的点击数，防内存爆
+
+var S = {
+  mode: "free",
+  durSec: 30,
+  bpm: 120,
+  sound: true,
+  running: false,
+  finished: false,
+  clicks: [],           // performance.now 时间戳
+  gaps: [],             // 相邻两次点击的间隔 ms
+  maxCps: 0, minGap: 0,
+  firstClick: 0, lastClick: 0, endAt: 0,
+  elapsed: 0,
+  raf: 0,
+  chartReady: false,
+  locked: false,          // 结算后锁定：误触不会直接开下一轮，必须按外部「确定」
+  offsetMs: 0,            // 判定延时补偿（毫秒），正数表示「我总偏晚，扣掉这么多」
+  r: null               // 节奏模式运行时
+};
+
+function freshRhythm() {
+  return {
+    active: false, counting: false, countText: "",
+    notes: [], hits: [], nextBeatTime: 0, beatIdx: 0,
+    combo: 0, maxCombo: 0, perfect: 0, good: 0, miss: 0, extra: 0,
+    audioWarned: false,           // 音频起不来时只提示一次
+    lastVisible: -1
+  };
+}
+
+/* ======================================================================
+   SECTION: utils
+   ====================================================================== */
+function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+function now() { return performance.now(); }
+function f(v, d) { return (typeof v === "number" && isFinite(v)) ? v.toFixed(d === undefined ? 2 : d) : "—"; }
+function i0(v) { return (typeof v === "number" && isFinite(v)) ? String(Math.round(v)) : "—"; }
+function ms(v) { return (typeof v === "number" && isFinite(v)) ? Math.round(v) + " ms" : "—"; }
+function cps(gap) { return gap > 0 ? 1000 / gap : 0; }
+function beatInterval() { return 60000 / clamp(S.bpm, 30, 300); }
+// 判定窗口随 BPM 收紧，避免快板下窗口重叠到相邻节拍
+function judgeWindows() {
+  var itv = beatInterval();
+  return {
+    p: Math.max(18, Math.min(PERFECT_MS, itv * 0.16)),
+    g: Math.max(40, Math.min(GOOD_MS, itv * 0.32)),
+    m: Math.max(60, Math.min(MISS_MS, itv * 0.46))
+  };
+}
+// 消息里带 <b> 强调，必须用 innerHTML，否则标签会被当纯文本显示出来
+function setMsg(t) { D.msg.innerHTML = t; }
+function alertBox(text) {
+  D.chartAlert.textContent = text;
+  D.chartAlert.hidden = !text;
+}
+
+/* ======================================================================
+   SECTION: audio  WebAudio 节拍音，不依赖任何音频文件
+   ====================================================================== */
+var actx = null;
+var audioDown = false;          // 环境不支持 / 被策略拦截：只影响发声，绝不阻止练习开始
+// 返回「此刻能不能发声」。注意：调用方不得据此拒绝启动会话
+function ensureAudio() {
+  if (audioDown) return false;
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { audioDown = true; return false; }
+    if (!actx) actx = new AC();
+    if (actx.state !== "running" && actx.resume) actx.resume();   // 授权后会自动恢复，每帧重试即可
+    return actx.state === "running";
+  } catch (e) {
+    return false;                 // 构造函数抛异常常是暂时的（自动播放策略、资源紧张），下次手势再试
+  }
+}
+function audioLive() { return !!(actx && actx.state === "running"); }
+// at：actx.currentTime 单位的绝对时间
+function blip(at, freq, peak, dur) {
+  if (!S.sound || !audioLive()) return;
+  try {
+    var osc = actx.createOscillator();
+    var g = actx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(freq, at);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(peak, at + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    osc.connect(g); g.connect(actx.destination);
+    osc.start(at); osc.stop(at + dur + 0.02);
+  } catch (e) { /* 某些内核不支持 exponentialRamp，退化为常量增益 */ }
+}
+// 节拍音按「页面时钟的目标时刻」排程，内部换算到音频时钟。
+// 音频没真正跑起来时静默跳过：宁可没声音，也不能让会话跟着音频时钟一起冻住。
+function scheduleTickAt(perfTime, isAccent) {
+  if (!S.sound || !audioLive()) return;
+  var lead = (perfTime - now()) / 1000;
+  if (lead < -0.05) return;              // 已过点的补不回来，跳过以免恢复时堆在一起炸响
+  var when = actx.currentTime + (lead > 0 ? lead : 0);
+  if (isAccent) blip(when, 1180, 0.16, 0.055);
+  else blip(when, 760, 0.11, 0.05);
+}
+function feedback(freq) { if (audioLive()) blip(actx.currentTime, freq, 0.09, 0.045); }
+
+/* ======================================================================
+   SECTION: metrics  下方统计区，按 key 复用节点
+   ====================================================================== */
+var metricNodes = {};
+function renderStats(items) {
+  var keep = {};
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    keep[it.k] = 1;
+    var node = metricNodes[it.k];
+    if (!node) {
+      node = document.createElement("div");
+      node.className = "ro";
+      var k = document.createElement("span"); k.className = "k";
+      var v = document.createElement("span"); v.className = "v mono";
+      node.appendChild(k); node.appendChild(v);
+      node._k = k; node._v = v;
+      D.stats.appendChild(node);
+      metricNodes[it.k] = node;
+    }
+    node.style.display = "";
+    node._k.textContent = it.k;
+    node._v.textContent = it.v;
+    node.className = "ro" + (it.cls ? " " + it.cls : "");
+  }
+  for (var key in metricNodes) {
+    if (!keep[key]) metricNodes[key].style.display = "none";
+  }
+}
+
+var FREE_STATS = [
+  { k: "用时", v: "—", }, { k: "点击次数", v: "0" }, { k: "最高速度", v: "—" },
+  { k: "平均速度", v: "—" }, { k: "最短间隔", v: "—" }
+];
+function statsForTap() {
+  var n = S.clicks.length;
+  var span = S.lastClick && S.firstClick ? Math.max(1, S.lastClick - S.firstClick) : 0;
+  var effMs = S.elapsed || span;                       // 自由模式：结算后固定，进行中实时
+  var avgFree = effMs > 0 ? n / (effMs / 1000) : 0;
+  if (S.mode === "free") {
+    return [
+      { k: "用时", v: effMs ? f(effMs / 1000, 2) + " s" : "—" },
+      { k: "点击次数", v: String(n) },
+      { k: "最高速度", v: S.maxCps ? f(S.maxCps, 2) + " /s" : "—", cls: S.maxCps > 8 ? "hi" : "" },
+      { k: "平均速度", v: (S.running || S.finished) && avgFree ? f(avgFree, 2) + " /s" : "—" },
+      { k: "最短间隔", v: S.minGap ? ms(S.minGap) : "—" }
+    ];
+  }
+  var total = S.durSec;
+  var left = S.running ? Math.max(0, (S.endAt - now()) / 1000) : (S.finished ? 0 : total);
+  // 限时：结束后按整段倒计时算，进行中按已经过的时间算
+  var usedSec = S.finished ? total : (S.running ? Math.max(0.001, (now() - S.firstClick) / 1000) : 0);
+  var avgTimed = usedSec > 0 && n > 0 ? n / usedSec : 0;
+  return [
+    { k: S.running ? "剩余" : "总时长", v: (S.running ? f(left, 1) : i0(total)) + " s", cls: S.running && left < 5 ? "warn" : "" },
+    { k: "点击次数", v: String(n) },
+    { k: "最高速度", v: S.maxCps ? f(S.maxCps, 2) + " /s" : "—", cls: S.maxCps > 8 ? "hi" : "" },
+    { k: "平均速度", v: avgTimed ? f(avgTimed, 2) + " /s" : "—" },
+    { k: "最短间隔", v: S.minGap ? ms(S.minGap) : "—" }
+  ];
+}
+function statsForRhythm() {
+  var r = S.r;
+  var devs = [];
+  for (var i = 0; i < r.hits.length; i++) if (r.hits[i].judgment !== "miss") devs.push(r.hits[i].dev);
+  var abs = 0, best = 0;
+  for (i = 0; i < devs.length; i++) { abs += Math.abs(devs[i]); best = Math.max(best, Math.abs(devs[i])); }
+  var mean = devs.length ? abs / devs.length : 0;
+  var variance = 0;
+  if (devs.length > 1) {
+    var m0 = mean;
+    for (i = 0; i < devs.length; i++) { var mabs = Math.abs(devs[i]) - m0; variance += mabs * mabs; }
+    variance = Math.sqrt(variance / devs.length);
+  }
+  var judged = r.perfect + r.good + r.miss;
+  var acc = judged ? (r.perfect + r.good) / judged * 100 : 0;
+  return [
+    { k: "命中", v: (r.perfect + r.good) + " / " + judged, cls: judged && acc > 90 ? "hi" : "" },
+    { k: "准确率", v: judged ? f(acc, 1) + "%" : "—" },
+    { k: "平均偏差", v: devs.length ? f(mean, 1) + " ms" : "—", cls: mean && mean < 30 ? "hi" : (mean > 70 ? "bad" : "") },
+    { k: "稳定度", v: devs.length > 1 ? "±" + f(variance, 1) + " ms" : "—", cls: variance && variance < 25 ? "hi" : "" },
+    { k: "最大连击", v: String(r.maxCombo) },
+    { k: "MISS", v: String(r.miss), cls: r.miss ? "bad" : "" },
+    { k: "延时", v: (S.offsetMs > 0 ? "+" : "") + S.offsetMs + " ms", cls: S.offsetMs ? "warn" : "" }
+  ];
+}
+
+/* ======================================================================
+   SECTION: pad  中间区域显示
+   ====================================================================== */
+function renderPad() {
+  if (S.mode === "rhythm") { return; }
+  var n = S.clicks.length;
+  if (S.mode === "free") {
+    D.tapFlag.textContent = "自由模式";
+    D.tapBig.textContent = String(n);
+    if (!S.running && !S.finished) D.tapSub.textContent = "点我开始";
+    else if (S.running) D.tapSub.textContent = "继续点，别停";
+    else D.tapSub.textContent = "已结束 · 点一下重新来";
+    var html = "";
+    if (S.running || S.finished) {
+      html += "<span>用时 " + f(S.elapsed / 1000, 2) + "s</span>";
+      html += "<span>当前 " + f(S.lastClick && S.gaps.length ? cps(S.gaps[S.gaps.length - 1]) : 0, 1) + " /s</span>";
+      html += "<span>最高 <b>" + (S.maxCps ? f(S.maxCps, 1) : "0") + "</b> /s</span>";
+    }
+    D.tapLive.innerHTML = html;
+    D.tapTip.textContent = S.finished ? "下方可点「查看图表」看速度曲线" : "桌面端可用空格键代替点击";
+  } else {
+    D.tapFlag.textContent = "限时 " + S.durSec + " 秒";
+    if (!S.running && !S.finished) {
+      D.tapBig.textContent = i0(S.durSec);
+      D.tapSub.textContent = "点我开始倒计时";
+      D.tapLive.innerHTML = "";
+    } else if (S.running) {
+      var left = Math.max(0, (S.endAt - now()) / 1000);
+      D.tapBig.textContent = left >= 10 ? i0(Math.ceil(left)) : f(left, 1);
+      D.tapSub.textContent = "已点 " + n + " 次";
+      D.tapLive.innerHTML = "<span>均速 <b>" + (n > 1 ? f(n / Math.max(0.001, (now() - S.firstClick) / 1000), 1) : "0") + "</b> /s</span>"
+        + "<span>最高 <b>" + (S.maxCps ? f(S.maxCps, 1) : "0") + "</b> /s</span>";
+    } else {
+      D.tapBig.textContent = String(n);
+      D.tapSub.textContent = "次 · 时间到";
+      D.tapLive.innerHTML = "<span>均速 <b>" + f(n / S.durSec, 2) + "</b> /s</span>"
+        + "<span>最高 <b>" + (S.maxCps ? f(S.maxCps, 1) : "0") + "</b> /s</span>";
+    }
+    D.tapTip.textContent = S.finished ? "下方可点「查看图表」看速度曲线" : "第一次点击即开始倒计时";
+  }
+  renderStats(statsForTap());
+}
+
+/* ======================================================================
+   SECTION: loop  统一动画/检测循环
+   ====================================================================== */
+function startLoop() {
+  if (S.raf) return;
+  var step = function () {
+    S.raf = 0;
+    var t = now();
+    if (S.mode !== "rhythm" && S.running) {
+      if (S.mode === "free") {
+        if (t - S.lastClick >= IDLE_MS) finishFree(t);
+      } else if (t >= S.endAt) {
+        finishTimed(t);
+      }
+    }
+    if (S.mode === "rhythm" && S.r && (S.r.active || S.r.counting)) rhythmFrame(t);
+    if (S.mode !== "rhythm") renderPad();
+    else if (S.r && S.r.active) renderStats(statsForRhythm());
+    var busy = S.running || (S.mode === "rhythm" && S.r && (S.r.active || S.r.counting));
+    if (busy) S.raf = requestAnimationFrame(step);
+  };
+  S.raf = requestAnimationFrame(step);
+}
+function stopLoop() { if (S.raf) { cancelAnimationFrame(S.raf); S.raf = 0; } }
+
+/* ======================================================================
+   SECTION: record  自由 / 限时的点击记录
+   ====================================================================== */
+function recordClick(t) {
+  var n = S.clicks.length;
+  if (n > 0) {
+    var gap = t - S.lastClick;
+    if (gap > 0 && S.gaps.length < MAX_RECORD) {
+      S.gaps.push(gap);
+      if (!S.minGap || gap < S.minGap) S.minGap = gap;
+      var c = cps(gap);
+      if (c > S.maxCps) S.maxCps = c;
+    }
+  }
+  S.clicks.push(t);
+  S.lastClick = t;
+  if (S.chartReady === false && S.clicks.length >= 2) D.chartBtn.disabled = false;
+}
+
+function finishFree(t) {
+  S.running = false;
+  S.finished = true;
+  S.locked = true;
+  // 实测时长包含最后那段 0.5 秒空档，结算按规则扣掉
+  var measured = S.lastClick - S.firstClick + IDLE_MS;
+  S.elapsed = Math.max(0, measured - IDLE_MS);
+  if (S.clicks.length < 2) {
+    S.elapsed = 0;
+    setMsg("只有 1 次点击，算不出速度。再连点几下试试。");
+  } else {
+    setMsg("结束：用时 <b>" + f(S.elapsed / 1000, 2) + "s</b>，" + S.clicks.length +
+      " 次，均速 <b>" + f(S.clicks.length / Math.max(0.001, S.elapsed / 1000), 2) + "/s</b>，" +
+      "最高 <b>" + f(S.maxCps, 2) + "/s</b>（最短间隔 " + ms(S.minGap) + "）");
+  }
+  D.chartBtn.disabled = S.clicks.length < 2;
+  renderPad();
+  syncAction();
+  stopLoop();
+}
+
+function finishTimed(t) {
+  S.running = false;
+  S.finished = true;
+  S.locked = true;
+  S.elapsed = S.durSec * 1000;
+  var avg = S.clicks.length / S.durSec;
+  setMsg("时间到：" + S.clicks.length + " 次，均速 <b>" + f(avg, 2) + "/s</b>，最高 <b>" +
+    f(S.maxCps, 2) + "/s</b>，最短间隔 " + ms(S.minGap));
+  D.chartBtn.disabled = S.clicks.length < 2;
+  renderPad();
+  syncAction();
+  stopLoop();
+}
+
+function resetTap() {
+  S.running = false; S.finished = false; S.locked = false;
+  S.clicks = []; S.gaps = [];
+  S.maxCps = 0; S.minGap = 0; S.elapsed = 0;
+  S.firstClick = 0; S.lastClick = 0; S.endAt = 0;
+  D.chartBtn.disabled = true;
+  renderPad();
+  syncAction();
+}
+
+// 底部主按钮的唯一状态机：节奏模式负责开始/停止/再来一次；
+// 自由与限时模式只在结算后出现「确定」，用来解除误触锁定。
+function syncAction() {
+  var b = D.rCta;
+  if (S.mode === "rhythm") {
+    b.hidden = false;
+    b.classList.add("pri");
+    if (S.r && (S.r.active || S.r.counting)) { b.textContent = "停止"; b.classList.remove("pri"); }
+    else if (S.finished) { b.textContent = "确定 · 再来一次"; }
+    else { b.textContent = "开始节奏练习"; }
+    return;
+  }
+  if (S.finished && S.locked) { b.hidden = false; b.textContent = "确定 · 开始下一轮"; b.classList.add("pri"); }
+  else { b.hidden = true; b.classList.remove("pri"); }
+}
+
+function tap() {
+  var t = now();
+  if (S.locked) return;          // 结算后锁定：必须先按外部「确定」，避免误触直接开下一轮
+  if (S.mode === "free") {
+    if (!S.running) {
+      S.running = true; S.finished = false;
+      S.firstClick = t;
+      startLoop();
+    }
+    recordClick(t);
+  } else {
+    if (!S.running) {
+      S.running = true; S.finished = false;
+      S.firstClick = t;
+      S.endAt = t + S.durSec * 1000;
+      startLoop();
+    }
+    recordClick(t);
+  }
+  renderStats(statsForTap());
+}
+
+/* ======================================================================
+   SECTION: input  指针与键盘
+   ====================================================================== */
+function ripple(pad, x, y) {
+  var r = document.createElement("i");
+  r.className = "ripple";
+  r.style.left = x + "px";
+  r.style.top = y + "px";
+  pad.appendChild(r);
+  window.setTimeout(function () { if (r.parentNode) r.parentNode.removeChild(r); }, 460);
+}
+function localPoint(pad, e) {
+  var rect = pad.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+D.padTap.addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  var p = localPoint(D.padTap, e);
+  ripple(D.padTap, p.x, p.y);
+  D.padTap.classList.add("press");
+  window.setTimeout(function () { D.padTap.classList.remove("press"); }, 90);
+  tap();
+});
+D.padTap.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+D.padRhythm.addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  if (actx && actx.state !== "running") ensureAudio();   // 借这次真实手势再试一次解锁音频
+  var p = localPoint(D.padRhythm, e);
+  ripple(D.padRhythm, p.x, p.y);
+  // 判定必须和音符时间用同一个时钟（WebAudio 时钟），否则偏差会整体漂走
+  rhythmHit(rClock());
+});
+D.padRhythm.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+document.addEventListener("keydown", function (e) {
+  if (e.repeat) return;
+  if (e.key !== " " && e.code !== "Space" && e.key !== "Enter") return;
+  var tag = (e.target && e.target.tagName) || "";
+  if (tag === "INPUT" || tag === "BUTTON" || tag === "SELECT") return;
+  if (!D.mask.hidden) { if (e.key === "Escape") closeModal(); return; }
+  e.preventDefault();
+  if (S.mode === "rhythm") rhythmHit(rClock());
+  else tap();
+});
+
+/* ======================================================================
+   SECTION: rhythm  节奏模式：音游式下落判定，音频与视觉共用 WebAudio 时钟
+   ====================================================================== */
+// 主时钟只用页面时钟：音频负责发声，不参与计时。
+// 否则音频被浏览器策略挂起时 currentTime 冻结，整个会话一起卡死（表现为「开始按钮点不动」）
+function rClock() { return now(); }
+
+function resetRhythm() {
+  S.r = freshRhythm();
+  D.verdict.className = "verdict";
+  D.countdown.hidden = true;
+  syncAction();
+  clearCanvas();
+  renderStats(statsForRhythm());
+  D.chartBtn.disabled = true;
+}
+
+function showVerdict(text, cls) {
+  D.verdict.textContent = text;
+  D.verdict.className = "verdict show " + cls;
+  window.clearTimeout(showVerdict._t);
+  showVerdict._t = window.setTimeout(function () {
+    D.verdict.className = "verdict " + cls;
+  }, 340);
+}
+
+function rhythmStart() {
+  S.mode = "rhythm";
+  S.finished = false;
+  var canHear = ensureAudio();      // 能不能发声只影响体验，不作为能否开始的前提
+  resetRhythm();
+  var itv = beatInterval();
+  var r = S.r;
+  var a0 = now() + 120;             // 页面时钟
+  // 4 拍引导（跟着 BPM 走，让你先抓到速度），之后进入正式节拍
+  for (var k = 0; k < 4; k++) scheduleTickAt(a0 + k * itv, true);
+  r.counting = true;
+  r.countEnd = a0 + 4 * itv;
+  r.beatIdx = 0;
+  r.nextBeatTime = a0 + 4 * itv;
+  r.active = true;
+  D.countdown.hidden = false;
+  D.countdown.textContent = "3";
+  syncAction();
+  setMsg("节奏：" + S.bpm + " BPM，蓝条碰到黄线那一刻点击。"
+    + (canHear || !S.sound ? "" : "（当前环境暂未取到声音，会边试边恢复）"));
+  startLoop();
+}
+
+function rhythmHit(t) {
+  var r = S.r;
+  if (!r || !r.active) {
+    if (S.mode === "rhythm" && r && r.counting) { /* 引导期不计较 */ }
+    return;
+  }
+  var w = judgeWindows();
+  var best = null, bestAbs = 1e9;
+  for (var i = 0; i < r.notes.length; i++) {
+    var n = r.notes[i];
+    if (n.judged) continue;
+    var abs = Math.abs(t - n.t);
+    if (abs < bestAbs) { bestAbs = abs; best = n; }
+  }
+  if (!best || bestAbs > w.m) {
+    r.extra++;
+    r.combo = 0;
+    showVerdict("空击", "m");
+    feedback(320);
+    renderStats(statsForRhythm());
+    return;
+  }
+  var dev = (t - S.offsetMs) - best.t;   // 扣掉设备/听觉延迟补偿
+  best.judged = true;
+  best.judgment = Math.abs(dev) <= w.p ? "p" : "g";
+  best.dev = dev;
+  r.hits.push({ idx: best.idx, dev: dev, judgment: best.judgment });
+  if (best.judgment === "p") {
+    r.perfect++;
+    r.combo++;
+    showVerdict(Math.abs(dev) < 12 ? "PERFECT" : (dev > 0 ? "偏晚 " + Math.round(dev) : "偏早 " + Math.round(-dev)) + "ms", "p");
+    feedback(1320);
+  } else {
+    r.good++;
+    r.combo++;
+    showVerdict(dev > 0 ? "偏晚 " + Math.round(dev) + "ms" : "偏早 " + Math.round(-dev) + "ms", "g");
+    feedback(880);
+  }
+  if (r.combo > r.maxCombo) r.maxCombo = r.combo;
+  D.chartBtn.disabled = false;
+  renderStats(statsForRhythm());
+}
+
+function finishRhythm() {
+  var r = S.r;
+  r.active = false;
+  r.counting = false;
+  D.countdown.hidden = true;
+  S.finished = true;
+  syncAction();
+  var judged = r.perfect + r.good + r.miss;
+  var acc = judged ? (r.perfect + r.good) / judged * 100 : 0;
+  setMsg("节奏结束：" + (r.perfect + r.good) + "/" + judged + " 命中（准确率 <b>" + f(acc, 1) +
+    "%</b>），最高连击 <b>" + r.maxCombo + "</b>，空击 " + r.extra + " 次。点「查看图表」看偏差分布。");
+  D.chartBtn.disabled = r.hits.length === 0;
+  renderStats(statsForRhythm());
+  stopLoop();
+}
+
+function rhythmFrame() {
+  var r = S.r;
+  if (!r) return;
+  var t = rClock();
+  var itv = beatInterval();
+  var w = judgeWindows();
+
+  if (r.counting) {
+    var left = r.countEnd - t;
+    var step = Math.ceil(left / itv);
+    D.countdown.textContent = step >= 4 ? "4" : (step === 3 ? "3" : (step === 2 ? "2" : (step === 1 ? "1" : "GO")));
+    if (t >= r.countEnd) { r.counting = false; D.countdown.hidden = true; }
+  }
+
+  // 音频始终起不来：如实告知退化为静音练习，视觉节拍依旧准确
+  if (!r.counting && !r.audioWarned && S.sound && !audioLive()) {
+    r.audioWarned = true;
+    setMsg("当前环境无法发声，已按静音练习：黄线与蓝条的时序仍然准确，可靠视觉练节奏。");
+  }
+
+  // 提前一个「视觉下落时长 + 余量」排程，保证蓝条来得及从顶部落下
+  var horizon = t + Math.max(LEAD_MS, 600) + 150;
+  while (r.beatIdx < BEATS_PER_SESSION && r.nextBeatTime < horizon) {
+    scheduleTickAt(r.nextBeatTime, r.beatIdx % 4 === 0);
+    r.notes.push({ t: r.nextBeatTime, idx: r.beatIdx, judged: false });
+    r.beatIdx++;
+    r.nextBeatTime += itv;
+  }
+
+  // 超时未击 → MISS
+  for (var i = 0; i < r.notes.length; i++) {
+    var n = r.notes[i];
+    if (!n.judged && t > n.t + w.m) {
+      n.judged = true; n.judgment = "miss";
+      r.miss++; r.combo = 0;
+      showVerdict("MISS", "m");
+    }
+  }
+
+  drawRhythm(t, w);
+
+  var last = r.nextBeatTime - itv;
+  if (r.beatIdx >= BEATS_PER_SESSION && t > last + w.m + 260) finishRhythm();
+}
+
+/* ======================================================================
+   SECTION: rhythm-canvas  黄线 + 下落蓝条
+   ====================================================================== */
+var rcv = D.rhythmCv;
+var rctx = rcv.getContext("2d");
+var rGeom = { w: 0, h: 0, lineY: 0 };
+
+function fitRhythmCv() {
+  var rect = rcv.getBoundingClientRect();
+  if (!rect.width) return false;
+  var dpr = clamp(window.devicePixelRatio || 1, 1, 2.5);
+  var w = Math.round(rect.width), h = Math.round(rect.height);
+  if (rcv.width !== Math.round(w * dpr) || rcv.height !== Math.round(h * dpr)) {
+    rcv.width = Math.round(w * dpr); rcv.height = Math.round(h * dpr);
+  }
+  rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  rGeom.w = w; rGeom.h = h; rGeom.lineY = h * LINE_AT;
+  return true;
+}
+function clearCanvas() {
+  if (!fitRhythmCv()) return;
+  rctx.clearRect(0, 0, rGeom.w, rGeom.h);
+}
+function drawRhythm(t, w) {
+  if (!fitRhythmCv()) return;
+  var W = rGeom.w, H = rGeom.h, LY = rGeom.lineY;
+  var r = S.r;
+  rctx.clearRect(0, 0, W, H);
+
+  // 轨道感：淡淡的横向分区
+  rctx.strokeStyle = "rgba(255,255,255,0.05)";
+  rctx.lineWidth = 1;
+  for (var g = 1; g < 4; g++) {
+    var yy = Math.round(H * g / 4) + 0.5;
+    rctx.beginPath(); rctx.moveTo(0, yy); rctx.lineTo(W, yy); rctx.stroke();
+  }
+
+  // 判定窗口带（±good 半透明，±perfect 更亮）
+  rctx.fillStyle = "rgba(255,210,63,0.06)";
+  rctx.fillRect(0, LY - w.g * 0.18, W, w.g * 0.36);
+  rctx.fillStyle = "rgba(92,230,168,0.10)";
+  rctx.fillRect(0, LY - w.p * 0.18, W, w.p * 0.36);
+
+  // 黄线
+  rctx.strokeStyle = "#ffd23f";
+  rctx.lineWidth = 3;
+  rctx.beginPath();
+  rctx.moveTo(0, LY); rctx.lineTo(W, LY);
+  rctx.stroke();
+  rctx.fillStyle = "rgba(255,210,63,0.55)";
+  rctx.font = "600 10px -apple-system, 'PingFang SC', sans-serif";
+  rctx.textAlign = "left"; rctx.textBaseline = "bottom";
+  rctx.fillText("判定线", 8, LY - 5);
+
+  // 下落蓝条：触线后消失（命中的立即消失，漏掉的短暂变红后消失）
+  var barH = clamp(H * 0.032, 10, 20);
+  var barW = W * 0.62;
+  var bx = (W - barW) / 2;
+  for (var i = 0; i < r.notes.length; i++) {
+    var n = r.notes[i];
+    var dt = n.t - t;                       // >0 还没到
+    if (dt > LEAD_MS) continue;
+    if (n.judged === undefined) continue;
+    var passed = -dt;
+    if (n.judged === "p" || n.judged === "g") continue;             // 命中：立即消失
+    if (n.judged === "miss" && passed > w.m + 240) continue;         // 漏掉：滞后一会儿再消失
+    var prog = 1 - dt / LEAD_MS;            // 0 → 顶部，1 → 黄线
+    var y = -barH + prog * (LY + barH);
+    var miss = n.judged === "miss";
+    var accent = (n.idx % 4 === 0);
+    rctx.globalAlpha = miss ? clamp(1 - (passed - w.m) / 240, 0, 1) : 1;
+    rctx.fillStyle = miss ? "rgba(255,122,143,0.85)" : (accent ? "#7fc0ff" : "#4d8ff0");
+    roundRect(rctx, bx, y, barW, barH, Math.min(4, barH / 2));
+    rctx.fill();
+    if (accent && !miss) {
+      rctx.fillStyle = "rgba(255,255,255,0.5)";
+      rctx.fillRect(bx + 3, y + barH * 0.34, 4, barH * 0.32);
+    }
+    rctx.globalAlpha = 1;
+  }
+
+  // 进度条
+  var done = clamp(r.beatIdx / BEATS_PER_SESSION, 0, 1);
+  rctx.fillStyle = "rgba(255,255,255,0.09)";
+  rctx.fillRect(0, H - 4, W, 4);
+  rctx.fillStyle = "#4da3ff";
+  rctx.fillRect(0, H - 4, W * done, 4);
+
+  // 实时连击
+  if (r.combo > 2) {
+    rctx.fillStyle = "rgba(207,224,255,0.9)";
+    rctx.font = "800 " + Math.round(clamp(H * 0.055, 16, 30)) + "px -apple-system, sans-serif";
+    rctx.textAlign = "right"; rctx.textBaseline = "top";
+    rctx.fillText(r.combo + " 连击", W - 12, 12);
+  }
+}
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  if (c.roundRect) { c.roundRect(x, y, w, h, r); return; }
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+
+/* ======================================================================
+   SECTION: mode  模式与参数切换
+   ====================================================================== */
+function setMode(m) {
+  if (S.mode === "rhythm" && S.r && S.r.active) finishRhythm();
+  stopLoop();
+  S.mode = m;
+  var btns = D.modes.querySelectorAll(".mode");
+  for (var i = 0; i < btns.length; i++) {
+    var on = btns[i].dataset.mode === m;
+    btns[i].classList.toggle("on", on);
+    btns[i].setAttribute("aria-selected", on ? "true" : "false");
+  }
+  D.optFree.hidden = m !== "free";
+  D.optTimed.hidden = m !== "timed";
+  D.optRhythm.hidden = m !== "rhythm";
+  D.padTap.classList.toggle("hidden", m === "rhythm");
+  D.padRhythm.classList.toggle("hidden", m !== "rhythm");
+
+  resetTap();
+  if (m === "rhythm") {
+    resetRhythm();
+    window.setTimeout(function () { fitRhythmCv(); clearCanvas(); }, 0);
+    setMsg("输入 BPM 或选一个预设，点「开始节奏练习」。一次 " + BEATS_PER_SESSION + " 拍。");
+    D.chartBtn.disabled = S.r.hits.length === 0;
+  } else {
+    setMsg(m === "free"
+      ? "自由模式：连点即可，停手 0.5 秒自动结算。"
+      : "限时模式：选时长，第一次点击开始倒计时。");
+  }
+}
+D.modes.addEventListener("click", function (e) {
+  var b = e.target.closest ? e.target.closest(".mode") : null;
+  if (b && b.dataset.mode) setMode(b.dataset.mode);
+});
+D.durations.addEventListener("click", function (e) {
+  var b = e.target.closest ? e.target.closest(".chip") : null;
+  if (!b) return;
+  S.durSec = parseInt(b.dataset.sec, 10) || 30;
+  var all = D.durations.querySelectorAll(".chip");
+  for (var i = 0; i < all.length; i++) all[i].classList.toggle("on", all[i] === b);
+  resetTap();
+  setMsg("限时 " + S.durSec + " 秒：第一次点击开始倒计时。");
+});
+function syncBpmChips() {
+  var all = D.bpmChips.querySelectorAll(".chip");
+  for (var i = 0; i < all.length; i++) all[i].classList.toggle("on", parseInt(all[i].dataset.bpm, 10) === S.bpm);
+}
+D.bpmChips.addEventListener("click", function (e) {
+  var b = e.target.closest ? e.target.closest(".chip") : null;
+  if (!b) return;
+  S.bpm = clamp(parseInt(b.dataset.bpm, 10) || 120, 30, 300);
+  D.bpm.value = String(S.bpm);
+  syncBpmChips();
+  if (S.r && S.r.active) { finishRhythm(); setMsg("已切换到 " + S.bpm + " BPM，点「再来一次」生效。"); }
+  else setMsg(S.bpm + " BPM：每 " + f(beatInterval(), 0) + " 毫秒一拍。");
+});
+D.bpm.addEventListener("change", function () {
+  var v = parseInt(this.value, 10);
+  if (!isFinite(v) || v < 30 || v > 300) {
+    v = clamp(isFinite(v) ? v : 120, 30, 300);
+    setMsg("BPM 只能在 30 到 300 之间，已自动调整为 " + v + "。");
+  } else {
+    setMsg(v + " BPM：每 " + f(beatInterval(), 0) + " 毫秒一拍。");
+  }
+  S.bpm = v;
+  this.value = String(v);
+  syncBpmChips();
+});
+D.soundBtn.addEventListener("click", function () {
+  S.sound = !S.sound;
+  this.textContent = S.sound ? "声音 开" : "声音 关";
+  this.classList.toggle("on", S.sound);
+  this.setAttribute("aria-pressed", S.sound ? "true" : "false");
+  if (S.sound) { ensureAudio(); feedback(980); }
+});
+D.rCta.addEventListener("click", function (e) {
+  e.stopPropagation();
+  if (S.mode === "rhythm") {
+    if (S.r && (S.r.active || S.r.counting)) { finishRhythm(); return; }
+    rhythmStart();
+    return;
+  }
+  // 自由 / 限时：结算后必须按这里确认，点点击区不会直接开下一轮
+  if (S.locked) { resetTap(); setMsg("已确认。点中间区域开始下一轮。"); }
+});
+
+/* ---- 延时补偿：判定里扣掉这个毫秒数 ---- */
+D.offset.addEventListener("change", function () {
+  var v = parseInt(this.value, 10);
+  if (!isFinite(v)) v = 0;
+  v = clamp(v, -300, 300);
+  S.offsetMs = v;
+  this.value = String(v);
+  setMsg("判定延时补偿 <b>" + (v > 0 ? "+" : "") + v + " ms</b>"
+    + (v ? "（正数表示扣掉「总偏晚」的量）" : "（不补偿）"));
+});
+
+D.calibBtn.addEventListener("click", function () {
+  var r = S.r;
+  var devs = (r && r.hits) ? r.hits.map(function (h) { return h.dev; }) : [];
+  if (devs.length < 5) {
+    setMsg("先完成一轮节奏练习、命中至少 5 次，才能按偏差校准（当前 " + devs.length + " 次）。");
+    return;
+  }
+  var sum = 0;
+  for (var i = 0; i < devs.length; i++) sum += devs[i];
+  var mean = sum / devs.length;
+  var add = Math.round(mean / 5) * 5;          // 5ms 粒度，避免抖来抖去
+  var nv = clamp(S.offsetMs + add, -300, 300);
+  S.offsetMs = nv;
+  D.offset.value = String(nv);
+  resetRhythm();
+  setMsg("已按本轮平均偏差 <b>" + f(mean, 1) + " ms</b> 校准，延时补偿设为 <b>"
+    + (nv > 0 ? "+" : "") + nv + " ms</b>。再跑一轮验证偏差是否回到 0 附近。");
+});
+D.resetBtn.addEventListener("click", function () {
+  if (S.mode === "rhythm") { resetRhythm(); setMsg("已重置节奏数据。"); }
+  else { resetTap(); setMsg("已重置。"); }
+});
+
+/* ======================================================================
+   SECTION: chart  速度曲线与节奏偏差图
+   ====================================================================== */
+function fitChartCv() {
+  var rect = D.chartCv.getBoundingClientRect();
+  var cssW = Math.max(280, Math.round(rect.width || 700));
+  var cssH = Math.round(clamp(cssW * 0.56, 200, 420));
+  var dpr = clamp(window.devicePixelRatio || 1, 1, 2.5);
+  D.chartCv.width = Math.round(cssW * dpr);
+  D.chartCv.height = Math.round(cssH * dpr);
+  D.chartCv.style.height = cssH + "px";
+  var c = D.chartCv.getContext("2d");
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { c: c, w: cssW, h: cssH };
+}
+function axisBase(c, W, H, padL, padR, padT, padB) {
+  c.clearRect(0, 0, W, H);
+  c.fillStyle = "#0c1017"; c.fillRect(0, 0, W, H);
+  c.strokeStyle = "rgba(255,255,255,0.12)";
+  c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(padL, padT); c.lineTo(padL, H - padB); c.lineTo(W - padR, H - padB);
+  c.stroke();
+}
+function txt(c, s, x, y, color, size, align, baseline) {
+  c.fillStyle = color || "#8b95a8";
+  c.font = "600 " + (size || 11) + "px -apple-system, 'PingFang SC', sans-serif";
+  c.textAlign = align || "left";
+  c.textBaseline = baseline || "middle";
+  c.fillText(s, x, y);
+}
+
+function drawSpeedChart() {
+  var f0 = fitChartCv(), c = f0.c, W = f0.w, H = f0.h;
+  var padL = 44, padR = 12, padT = 16, padB = 30;
+  var gaps = S.gaps.slice(0, 600);
+  axisBase(c, W, H, padL, padR, padT, padB);
+  if (gaps.length < 1) { txt(c, "数据不足", W / 2, H / 2, "#616b7f", 14, "center"); return; }
+  var vals = gaps.map(function (g) { return cps(g); });
+  var maxV = Math.max.apply(null, vals) * 1.15;
+  var avgV = S.mode === "free" && S.elapsed > 0
+    ? S.clicks.length / (S.elapsed / 1000)
+    : S.clicks.length / Math.max(0.001, (S.lastClick - S.firstClick) / 1000);
+  var X = function (i) { return padL + (gaps.length === 1 ? (W - padL - padR) / 2 : i / (gaps.length - 1) * (W - padL - padR)); };
+  var Y = function (v) { return padT + (1 - clamp(v / maxV, 0, 1)) * (H - padT - padB); };
+
+  c.strokeStyle = "rgba(255,255,255,0.06)";
+  for (var g = 0; g <= 4; g++) {
+    var v = maxV * g / 4, y = Y(v);
+    c.beginPath(); c.moveTo(padL, y); c.lineTo(W - padR, y); c.stroke();
+    txt(c, f(v, 1), padL - 6, y, "#6c778c", 10, "right");
+  }
+  // 平均线
+  c.setLineDash([5, 4]);
+  c.strokeStyle = "#5ce6a8"; c.lineWidth = 1.4;
+  c.beginPath(); c.moveTo(padL, Y(avgV)); c.lineTo(W - padR, Y(avgV)); c.stroke();
+  c.setLineDash([]);
+  txt(c, "平均 " + f(avgV, 2) + "/s", W - padR - 4, Y(avgV) - 9, "#5ce6a8", 10.5, "right");
+
+  // 速度折线
+  c.beginPath();
+  for (var i = 0; i < vals.length; i++) { if (i === 0) c.moveTo(X(i), Y(vals[i])); else c.lineTo(X(i), Y(vals[i])); }
+  c.strokeStyle = "#4da3ff"; c.lineWidth = 2; c.lineJoin = "round"; c.stroke();
+  c.fillStyle = "rgba(77,163,255,0.16)";
+  c.lineTo(X(vals.length - 1), H - padB); c.lineTo(X(0), H - padB); c.closePath(); c.fill();
+
+  // 最高点
+  var mi = 0;
+  for (i = 1; i < vals.length; i++) if (vals[i] > vals[mi]) mi = i;
+  c.beginPath(); c.arc(X(mi), Y(vals[mi]), 4.5, 0, Math.PI * 2);
+  c.fillStyle = "#ffd23f"; c.fill();
+  txt(c, "最高 " + f(vals[mi], 2) + "/s", clamp(X(mi), padL + 30, W - padR - 30), Y(vals[mi]) - 14, "#ffd23f", 10.5, "center");
+
+  txt(c, "第 2 次点击", padL, H - padB + 12, "#616b7f", 10);
+  txt(c, "第 " + (gaps.length + 1) + " 次", W - padR, H - padB + 12, "#616b7f", 10, "right");
+  c.save(); c.translate(12, H / 2); c.rotate(-Math.PI / 2);
+  txt(c, "点击速度（次/秒）", 0, 0, "#6c778c", 10.5, "center"); c.restore();
+}
+
+function drawRhythmChart() {
+  var f0 = fitChartCv(), c = f0.c, W = f0.w, H = f0.h;
+  var padL = 44, padR = 12, padT = 18, padB = 30;
+  axisBase(c, W, H, padL, padR, padT, padB);
+  var hits = S.r.hits;
+  if (!hits.length) { txt(c, "还没有命中数据", W / 2, H / 2, "#616b7f", 14, "center"); return; }
+  var w = judgeWindows();
+  var maxAbs = Math.max(w.g * 1.3, 40);
+  for (var i = 0; i < hits.length; i++) maxAbs = Math.max(maxAbs, Math.abs(hits[i].dev) * 1.15);
+  var Y = function (v) { return padT + (1 - (v + maxAbs) / (2 * maxAbs)) * (H - padT - padB); };
+  var X = function (i) { return padL + (hits.length === 1 ? (W - padL - padR) / 2 : i / (hits.length - 1) * (W - padL - padR)); };
+
+  // ±good / ±perfect 带
+  c.fillStyle = "rgba(255,210,63,0.09)";
+  c.fillRect(padL, Y(w.g), W - padL - padR, Y(-w.g) - Y(w.g));
+  c.fillStyle = "rgba(92,230,168,0.13)";
+  c.fillRect(padL, Y(w.p), W - padL - padR, Y(-w.p) - Y(w.p));
+
+  c.strokeStyle = "rgba(255,255,255,0.28)"; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(padL, Y(0)); c.lineTo(W - padR, Y(0)); c.stroke();
+  c.setLineDash([4, 4]);
+  c.strokeStyle = "rgba(255,210,63,0.45)";
+  [w.g, -w.g].forEach(function (v) { c.beginPath(); c.moveTo(padL, Y(v)); c.lineTo(W - padR, Y(v)); c.stroke(); });
+  c.setLineDash([]);
+
+  var bw = clamp((W - padL - padR) / hits.length * 0.6, 2, 18);
+  for (i = 0; i < hits.length; i++) {
+    var d = hits[i].dev;
+    c.fillStyle = hits[i].judgment === "p" ? "#5ce6a8" : "#ffd23f";
+    var y0 = Y(0), y1 = Y(d);
+    c.fillRect(X(i) - bw / 2, Math.min(y0, y1), bw, Math.max(2, Math.abs(y1 - y0)));
+  }
+  // MISS 用红点标在顶部
+  var missed = [];
+  for (i = 0; i < S.r.notes.length; i++) if (S.r.notes[i].judgment === "miss") missed.push(S.r.notes[i].idx);
+  c.fillStyle = "#ff7a8f";
+  for (i = 0; i < missed.length; i++) {
+    var mx = padL + (hits.length > 1 ? clamp(missed[i] / (BEATS_PER_SESSION - 1), 0, 1) * (W - padL - padR) : (W - padL - padR) / 2);
+    c.beginPath(); c.arc(mx, padT + 4, 3.2, 0, Math.PI * 2); c.fill();
+  }
+
+  var devs = hits.map(function (h) { return Math.abs(h.dev); });
+  var mean = devs.reduce(function (a, b) { return a + b; }, 0) / devs.length;
+  txt(c, "0 ms（完全合拍）", padL - 6, Y(0), "#9aa6bb", 10, "right");
+  txt(c, "+" + Math.round(maxAbs) + " 偏晚", padL - 6, padT + 6, "#616b7f", 10, "right");
+  txt(c, "−" + Math.round(maxAbs) + " 偏早", padL - 6, H - padB - 4, "#616b7f", 10, "right");
+  txt(c, "绿=PERFECT(±" + Math.round(w.p) + "ms)　黄=GOOD(±" + Math.round(w.g) + "ms)　红点=MISS", padL, H - padB + 14, "#6c778c", 10);
+  txt(c, "平均绝对偏差 " + f(mean, 1) + " ms", W - padR, padT + 6, "#cfd8e8", 11, "right");
+}
+
+function openChart() {
+  if (S.mode === "rhythm") {
+    if (!S.r.hits.length) { setMsg("还没有命中记录，先完成一次节奏练习。"); return; }
+    D.chartTitle.textContent = "节奏偏差图（每次点击相对标准节拍的时间差）";
+    var devs = S.r.hits.map(function (h) { return Math.abs(h.dev); });
+    var mean = devs.reduce(function (a, b) { return a + b; }, 0) / devs.length;
+    D.chartSum.innerHTML = "正数偏晚、负数偏早。命中 <b>" + (S.r.perfect + S.r.good) + "</b> 次（PERFECT " +
+      S.r.perfect + " / GOOD " + S.r.good + "），MISS <b>" + S.r.miss + "</b>，空击 " + S.r.extra +
+      " 次，平均绝对偏差 <b>" + f(mean, 1) + " ms</b>，最大连击 <b>" + S.r.maxCombo + "</b>。柱子越接近中线越合拍。";
+    requestAnimationFrame(function () { drawRhythmChart(); });
+  } else {
+    if (S.gaps.length < 1) { setMsg("至少要点两次才能算速度。"); return; }
+    D.chartTitle.textContent = "点击速度曲线（每次点击相对上一次的瞬时速度）";
+    D.chartSum.innerHTML = (S.mode === "free" ? "用时 <b>" + f(S.elapsed / 1000, 2) +
+      " s</b>（已扣除结尾 0.5 秒空档）" : "限时 <b>" + S.durSec + " s</b>") +
+      "，共 <b>" + S.clicks.length + "</b> 次点击，最短间隔 <b>" + ms(S.minGap) +
+      "</b> → 最高速度 <b>" + f(S.maxCps, 2) + " 次/秒</b>。绿色虚线是平均速度。";
+    requestAnimationFrame(function () { drawSpeedChart(); });
+  }
+  alertBox("");
+  D.mask.hidden = false;
+  D.chartClose.focus();
+}
+function closeModal() { D.mask.hidden = true; }
+D.chartBtn.addEventListener("click", openChart);
+D.chartClose.addEventListener("click", closeModal);
+D.mask.addEventListener("click", function (e) { if (e.target === D.mask) closeModal(); });
+D.chartSave.addEventListener("click", function () {
+  try {
+    D.chartCv.toBlob(function (b) {
+      if (!b) { alertBox("这个浏览器不导出 blob，直接截图保存这张图也可以。"); return; }
+      var url = URL.createObjectURL(b);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = (S.mode === "rhythm" ? "节奏偏差图" : "点击速度曲线") + "-" + S.bpm + ".png";
+      document.body.appendChild(a);
+      a.click();
+      window.setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 2000);
+      alertBox("已交给浏览器下载。如果没看到文件：内嵌预览环境常会拦截下载，请改用系统浏览器打开本页，或直接截图保存。");
+    }, "image/png");
+  } catch (e) {
+    alertBox("导出失败：" + (e && e.message ? e.message : "未知错误") + "。可以直接截图保存这张图。");
+  }
+});
+
+/* ======================================================================
+   SECTION: boot
+   ====================================================================== */
+window.addEventListener("resize", function () {
+  if (S.mode === "rhythm") { fitRhythmCv(); if (!S.r.active) clearCanvas(); }
+});
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden && S.mode === "rhythm" && S.r && S.r.active) {
+    finishRhythm();
+    setMsg("页面切到后台，为避免节拍漂移已提前结算。回来点「再来一次」。");
+  } else if (!document.hidden && S.mode !== "rhythm" && S.running) {
+    startLoop();
+  }
+});
+
+function boot() {
+  S.r = freshRhythm();
+  syncBpmChips();
+  setMode("free");
+  renderStats(statsForTap());
+  setMsg("选模式：自由练手速、限时练稳定、节奏练合拍精准度。");
+}
+boot();
+})();
+</script>
+</body>
+</html>
