@@ -1,1 +1,10 @@
-[]
+[
+  {
+    "name": "点击练习器",
+    "path": "projects/clickgame/click_game.html",
+    "desc": "",
+    "tags": [],
+    "color": "#4ade80",
+    "thumb": null
+  }
+]
