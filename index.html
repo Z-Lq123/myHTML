@@ -16,9 +16,8 @@
     <header class="home-header">
       <div>
         <h1 class="home-title">项目导航</h1>
-        <p class="home-subtitle">本地存储的个人项目与工具索引</p>
+        <p class="home-subtitle">个人项目与工具的索引</p>
       </div>
-      <button class="btn pri" id="btnNew" type="button">+ 新建项目</button>
     </header>
 
     <!-- ========== 主体 ========== -->
@@ -27,12 +26,12 @@
       <!-- 工具栏 -->
       <div class="home-toolbar">
         <input class="input home-search" id="search" type="search"
-               placeholder="搜索名称或描述…" autocomplete="off">
+               placeholder="搜索名称、描述或标签…" autocomplete="off">
         <span class="home-count" id="count">共 0 个</span>
       </div>
 
-      <!-- 分类筛选 -->
-      <div class="home-filters" id="filters" role="group" aria-label="分类筛选"></div>
+      <!-- 标签筛选 -->
+      <div class="home-filters" id="filters" role="group" aria-label="标签筛选"></div>
 
       <!-- 项目网格 -->
       <div class="home-grid" id="grid"></div>
@@ -41,7 +40,7 @@
       <div class="home-empty" id="empty" hidden>
         <div>
           <p>还没有匹配的项目</p>
-          <p class="u-tiny u-mute">试试调整搜索词或分类</p>
+          <p class="u-tiny u-mute">试试调整搜索词或标签</p>
         </div>
       </div>
 
@@ -49,7 +48,7 @@
 
     <!-- ========== 页脚 ========== -->
     <footer class="home-footer">
-      数据保存在浏览器本地 · <code>localStorage</code>
+      项目数据来自仓库根目录的 <code>projects.json</code>
     </footer>
 
   </div>
@@ -58,66 +57,66 @@
   (function () {
     'use strict';
 
-    /* ---------- 数据 ---------- */
-    const KEY = 'nav.projects.v1';
-    const CATS = ['全部', '工具', '游戏', '学习', '其他'];
+    /* ---------- 配置 ---------- */
+    const DATA_URL = 'projects.json';   // 手动维护的项目清单
 
-    const seed = [
-      { id: 'p1', name: '函数闯关', desc: '以函数为核心玩法的独立游戏原型', cat: '游戏', emoji: '', tags: ['Godot', 'GDScript'] },
-      { id: 'p2', name: '组件库', desc: '可复用的前端 UI 组件与样式规范', cat: '工具', emoji: '', tags: ['CSS', '组件'] },
-      { id: 'p3', name: '数学笔记', desc: '高一预科知识点梳理与错题归档', cat: '学习', emoji: '', tags: ['函数', '集合'] },
-      { id: 'p4', name: '脚本合集', desc: '日常用的自动化小脚本', cat: '其他', emoji: '️', tags: ['JS'] }
-    ];
+    let all = [];           // 全部项目（来自 projects.json）
+    let activeTag = '全部'; // 当前选中标签
+    let keyword = '';       // 搜索关键词
 
-    let projects = load();
-    let activeCat = '全部';
-    let keyword = '';
-
-    /* ---------- 存取 ---------- */
-    function load() {
-      try {
-        const raw = localStorage.getItem(KEY);
-        if (raw) {
-          const arr = JSON.parse(raw);
-          if (Array.isArray(arr) && arr.length) return arr;
-        }
-      } catch (e) { /* 忽略解析错误 */ }
-      localStorage.setItem(KEY, JSON.stringify(seed));
-      return seed.slice();
-    }
-    function save() {
-      localStorage.setItem(KEY, JSON.stringify(projects));
-    }
-
-    /* ---------- 渲染 ---------- */
+    /* ---------- DOM ---------- */
     const $grid = document.getElementById('grid');
     const $empty = document.getElementById('empty');
     const $count = document.getElementById('count');
     const $filters = document.getElementById('filters');
 
+    /* ---------- 数据加载 ---------- */
+    async function load() {
+      try {
+        const res = await fetch(DATA_URL, { cache: 'no-cache' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const arr = await res.json();
+        all = Array.isArray(arr) ? arr : [];
+      } catch (e) {
+        all = [];
+        console.error('projects.json 加载失败：', e);
+      }
+      renderFilters();
+      renderGrid();
+    }
+
+    /* ---------- 标签收集 ---------- */
+    function allTags() {
+      const set = new Set();
+      all.forEach(p => (p.tags || []).forEach(t => set.add(t)));
+      return ['全部', ...Array.from(set)];
+    }
+
+    /* ---------- 渲染筛选 ---------- */
     function renderFilters() {
-      $filters.innerHTML = CATS.map(c => `
+      $filters.innerHTML = allTags().map(t => `
         <button class="home-filter" type="button"
-                data-cat="${c}"
-                aria-pressed="${c === activeCat}">${c}</button>
+                data-tag="${esc(t)}"
+                aria-pressed="${t === activeTag}">${esc(t)}</button>
       `).join('');
     }
 
+    /* ---------- 渲染网格 ---------- */
     function renderGrid() {
-      const list = projects.filter(p => {
-        const okCat = activeCat === '全部' || p.cat === activeCat;
-        const kw = keyword.trim().toLowerCase();
+      const kw = keyword.trim().toLowerCase();
+      const list = all.filter(p => {
+        const okTag = activeTag === '全部' || (p.tags || []).includes(activeTag);
         const okKw = !kw ||
           (p.name || '').toLowerCase().includes(kw) ||
           (p.desc || '').toLowerCase().includes(kw) ||
           (p.tags || []).some(t => t.toLowerCase().includes(kw));
-        return okCat && okKw;
+        return okTag && okKw;
       });
 
       $grid.innerHTML = list.map(p => `
-        <a class="home-card" href="project.html?id=${encodeURIComponent(p.id)}">
-          <div class="home-card__thumb">${p.emoji || ''}</div>
-          <h3 class="home-card__name">${esc(p.name)}</h3>
+        <a class="home-card" href="${esc(p.path || '')}">
+          <div class="home-card__thumb">${p.thumb ? `<img src="${esc(p.thumb)}" alt="${esc(p.name || '')}">` : ''}</div>
+          <h3 class="home-card__name">${esc(p.name || '未命名')}</h3>
           <p class="home-card__desc">${esc(p.desc || '暂无描述')}</p>
           <div class="home-card__tags">
             ${(p.tags || []).map(t => `<span class="home-tag">${esc(t)}</span>`).join('')}
@@ -140,35 +139,19 @@
     $filters.addEventListener('click', e => {
       const btn = e.target.closest('.home-filter');
       if (!btn) return;
-      activeCat = btn.dataset.cat;
+      activeTag = btn.dataset.tag;
       renderFilters();
       renderGrid();
     });
 
     document.getElementById('search').addEventListener('input', e => {
-      keyword = e.target.value;
-      renderGrid();
-    });
-
-    document.getElementById('btnNew').addEventListener('click', () => {
-      const name = prompt('项目名称：');
-      if (!name || !name.trim()) return;
-      const p = {
-        id: 'p' + Date.now(),
-        name: name.trim(),
-        desc: '',
-        cat: activeCat === '全部' ? '其他' : activeCat,
-        emoji: '',
-        tags: []
-      };
-      projects.unshift(p);
-      save();
+      keyword = e.value;
       renderGrid();
     });
 
     /* ---------- 启动 ---------- */
     renderFilters();
-    renderGrid();
+    load();
   })();
   </script>
 </body>
