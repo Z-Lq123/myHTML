@@ -1,0 +1,122 @@
+name: Auto Build Projects Index
+
+on:
+  push:
+    paths:
+      - 'projects/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Scan projects and build metadata
+        run: |
+          python3 << 'PYEOF'
+          import os, re, json, hashlib, glob
+
+          PALETTE = ["#2b6cf0", "#5ce6a8", "#ffd23f", "#ff7a8f",
+                     "#a78bfa", "#38bdf8", "#fb923c", "#4ade80"]
+
+          def color_of(path):
+              h = hashlib.md5(path.encode()).hexdigest()
+              return PALETTE[int(h[:8], 16) % len(PALETTE)]
+
+          def read_meta(html_path):
+              """从 HTML 提取 title / description / keywords"""
+              try:
+                  with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+                      head = f.read(8192)          # 只读头部，够用了
+              except Exception:
+                  return "", "", []
+
+              title = ""
+              m = re.search(r'<title[^>]*>(.*?)</title>', head, re.S | re.I)
+              if m:
+                  title = re.sub(r'\s+', ' ', m.group(1)).strip()
+
+              desc = ""
+              m = re.search(r'<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']',
+                            head, re.S | re.I)
+              if m:
+                  desc = m.group(1).strip()
+
+              tags = []
+              m = re.search(r'<meta[^>]+name=["\']keywords["\'][^>]+content=["\'](.*?)["\']',
+                            head, re.S | re.I)
+              if m:
+                  tags = [t.strip() for t in re.split(r'[,，]', m.group(1)) if t.strip()]
+              return title, desc, tags
+
+          def find_thumb(project_dir):
+              for ext in ("png", "jpg", "jpeg", "webp", "svg", "gif"):
+                  for name in ("thumb", "thumbnail", "preview", "cover"):
+                      p = f"{project_dir}/{name}.{ext}"
+                      if os.path.isfile(p):
+                          return p
+              return None
+
+          projects = []
+          seen = set()
+
+          for html in sorted(glob.glob("projects/**/*.html", recursive=True)):
+              rel = html.replace("\\", "/")
+              parts = rel.split("/")            # projects / [分类] / 项目名 / 文件.html
+              if len(parts) < 3:
+                  continue
+
+              filename = parts[-1][:-5]          # 去掉 .html
+              proj_dir = "/".join(parts[:-1])    # 项目所在目录
+              folder   = parts[-2]               # 上级文件夹名
+
+              # 分类：projects/分类/项目/x.html 时，分类存在
+              category = parts[1] if len(parts) >= 5 else ""
+
+              title, desc, meta_tags = read_meta(html)
+
+              # 项目名优先级：<title> > 文件夹名 > 文件名
+              name = title or (folder if folder != filename else filename)
+
+              # 标签：meta keywords + 目录分类，去重保序
+              tags = list(dict.fromkeys(([category] if category else []) + meta_tags))
+
+              # 缩略图：项目目录内自动探测
+              thumb = find_thumb(proj_dir)
+
+              key = (name, rel)
+              if key in seen:
+                  continue
+              seen.add(key)
+
+              projects.append({
+                  "name":  name,
+                  "path":  rel,
+                  "desc":  desc,
+                  "tags":  tags,
+                  "color": color_of(rel),
+                  "thumb": thumb,
+              })
+
+          with open("projects.json", "w", encoding="utf-8") as f:
+              json.dump(projects, f, ensure_ascii=False, indent=2)
+
+          print(f"✅ 扫描到 {len(projects)} 个项目")
+          for p in projects:
+              print(f"   · {p['name']:<20} {p['path']}  {p['tags']}")
+          PYEOF
+
+      - name: Commit and push
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add projects.json
+          git diff --staged --quiet \
+            || git commit -m "chore: auto-update projects.json [skip ci]"
+          git push
