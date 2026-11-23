@@ -2,7 +2,7 @@
   {
     "name": "点击游戏",
     "desc": "测试手速的休闲小游戏",
-    "path": "projects/clickgame/clickgame.html",
+    "path": "projects/clickgame/click_game.html",
     "thumb": null,
     "tags": ["游戏", "休闲"]
   },
