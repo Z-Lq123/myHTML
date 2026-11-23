@@ -1,16 +1,10 @@
 [
   {
-    "name": "点击游戏",
-    "desc": "测试手速的休闲小游戏",
+    "name": "点击练习器",
     "path": "projects/clickgame/click_game.html",
-    "thumb": null,
-    "tags": ["游戏", "休闲"]
-  },
-  {
-    "name": "下一个项目",
-    "desc": "简介",
-    "path": "projects/next-proj/index.html",
-    "thumb": null,
-    "tags": ["工具"]
+    "desc": "",
+    "tags": [],
+    "color": "#4ade80",
+    "thumb": null
   }
 ]
